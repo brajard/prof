@@ -10,3 +10,4 @@ reconstruction  velocity profile from surface data
 * `pip install pandas`
 * `conda install xarray dask netCDF4 bottleneck`
 * `conda install netCDF4`
+* `pip install spyder`
