@@ -13,7 +13,9 @@ import os
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import xarray as xr
+import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.basemap import Basemap
 DATADIR = '/net/argos/data/peps/cchlod/ARGO_DATA/TempSalintyGamma'
 
 FPREFIX = 'mapped_gamma_all_sources_'
@@ -33,6 +35,27 @@ Xmasked = Xumasked.where(mask1D,drop=True)
 Xmasked=Xmasked.transpose('geo','depth')
 
 
+#%% basemap plot
+def map_plot(XX):
+    #X should be a xarray containing lon and lat
+    lon_0 = 0
+    boundinglat = float(XX.lat.max())
+    XX=XX.transpose('lat','lon')
+    m = Basemap(projection='spstere',boundinglat=boundinglat,lon_0=lon_0,resolution='l')
+    xx,yy = np.meshgrid(XX.lon,XX.lat)
+    x,y = m(xx,yy)
+    m.contourf(x,y,XX.values)
+
+    plt.colorbar()
+ #   m.drawmapboundary(fill_color='aqua')
+    m.drawcoastlines()
+    m.fillcontinents(color='coral',lake_color='aqua')
+# draw parallels and meridians.
+    m.drawparallels(np.arange(-80.,81.,20.))
+    m.drawmeridians(np.arange(-180.,181.,20.))
+
+   
+
 #%% PCA
 
 #Standardization
@@ -51,13 +74,43 @@ plt.plot(scaler.mean_,data['gamma'].depth)
 plt.gca().invert_yaxis()
 plt.ylabel('depth[m]')
 plt.xlabel('density')
+plt.title('mean density profile')
 plt.show()
 
-plt.bar(range(len(pca.explained_variance_ratio_)),pca.explained_variance_ratio_)
+
+x = range(1,len(pca.explained_variance_ratio_)+1)
+plt.bar(x,pca.explained_variance_ratio_)
+plt.plot(x,pca.explained_variance_ratio_.cumsum(),'r.-')
+plt.xticks(x)
+plt.xlabel('eigen value')
+plt.ylabel('explained variance')
 plt.show()
 
 plt.plot(pca.components_[0,:],data['gamma'].depth)
-plt.show()
+plt.gca().invert_yaxis()
+plt.title('First PCA component')
+plt.xlabel('component value')
+plt.ylabel('depth[m]')
+
+#%%geoplot
+icomp = 0
+proj = pca.transform(X)
+proj2 = xr.DataArray(proj[:,icomp],coords=Xmasked['geo'].coords)
+map_plot(proj2.unstack('geo').transpose('lat','lon'))
+plt.title('PCA component number '+ str(icomp+1))
+
+
+#%% reconstruct
+n_components = 1
+pca1 = PCA(n_components=n_components)
+pca1.fit(X)
+proj1 = pca1.transform(X)
+Xrec = pca1.inverse_transform(proj1)
+Xrec = scaler.inverse_transform(Xrec)
+
+X2 = xr.DataArray(Xrec,Xmasked.coords).unstack('geo')
+
+
 
 #%% Plots
 gamma1d = data['gamma'].isel(lat=100,lon=30)

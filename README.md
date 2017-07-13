@@ -12,4 +12,5 @@ reconstruction  velocity profile from surface data
 * `conda install netCDF4`
 * `conda install spyder`
 * `pip install matplotlib`
+* `conda install basemap`
 * `pip install sklearn`
