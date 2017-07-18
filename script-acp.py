@@ -11,8 +11,9 @@ This is a temporary script file.
 # %% Init
 import os
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler,FunctionTransformer
 from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
 import xarray as xr
 import numpy as np
 from scipy.stats import gaussian_kde
@@ -106,15 +107,16 @@ plt.title('PCA component number '+ str(icomp+1))
 
 
 #%% reconstruct
-XX=dict()
+XX = dict()
+pcan = dict()
 components = [1,2,3,10]
 
 for n_components in components:
 
-    pca1 = PCA(n_components=n_components)
-    pca1.fit(X)
-    proj1 = pca1.transform(X)
-    Xrec = pca1.inverse_transform(proj1)
+    pcan[n_components] = PCA(n_components=n_components)
+    pcan[n_components].fit(X)
+    proj1 = pcan[n_components].transform(X)
+    Xrec = pcan[n_components].inverse_transform(proj1)
     Xrec = scaler.inverse_transform(Xrec)
     
     XX[n_components] = xr.DataArray(Xrec,Xmasked.coords).unstack('geo')
@@ -125,7 +127,7 @@ for n_components in components:
 n_components = 1
 
 #North profile
-lat = -35
+lat = -15
 lon = 0
 gamma1d = data['gamma'].isel(lat=lat,lon=lon)
 plt.plot(gamma1d,data['gamma'].depth,label='profile')
@@ -138,8 +140,8 @@ plt.legend()
 plt.show()
 
 #South profile
-lat = -80
-lon = 0
+lat = 60
+lon = 600
 gamma1d = data['gamma'].isel(lat=lat,lon=lon)
 plt.plot(gamma1d,data['gamma'].depth,label='profile')
 plt.plot(scaler.mean_,data['gamma'].depth,label='mean')
@@ -188,3 +190,48 @@ plt.show()
 #plt.show()
 
 #%% latitude component determination
+def trans_func(X,lr,lat,pca):
+    y = lr.predict(lat)[:,np.newaxis]
+    
+    return X-pca.inverse_transform(y)
+
+def itrans_func(X,lr,lat,pca):
+    y = lr.predict(lat)[:,np.newaxis]
+
+    return X+pca.inverse_transform(y)
+
+#parameter to pass to the function
+kw_args = {'lr':lr,'lat':Xlin,'pca':pcan[1]}
+
+ft = FunctionTransformer(trans_func,itrans_func,kw_args=kw_args,inv_kw_args=kw_args)
+
+preproc = Pipeline([('scaling',scaler),('latitude-regress',ft)])
+
+#%% Plot preprocessing
+Xz = np.zeros(Xmasked.shape)
+Xr = preproc.inverse_transform(Xz)
+XXd = xr.DataArray(Xr,Xmasked.coords).unstack('geo')
+lat = -15
+lon = 0
+gamma1d = data['gamma'].isel(lat=lat,lon=lon)
+plt.plot(gamma1d,data['gamma'].depth,label='profile')
+plt.plot(scaler.mean_,data['gamma'].depth,label='mean')
+plt.plot(XXd.isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec(lat)')
+plt.gca().invert_yaxis()
+plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
+plt.legend()
+plt.show()
+
+#South profile
+lat = 60
+lon = 600
+gamma1d = data['gamma'].isel(lat=lat,lon=lon)
+plt.plot(gamma1d,data['gamma'].depth,label='profile')
+plt.plot(scaler.mean_,data['gamma'].depth,label='mean')
+plt.plot(XXd.isel(lat=lat,lon=lon),data['gamma'].depth,label='rec(lat)')
+plt.gca().invert_yaxis()
+plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
+plt.legend()
+plt.show()
+
