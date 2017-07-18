@@ -12,12 +12,15 @@ This is a temporary script file.
 import os
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
 import xarray as xr
 import numpy as np
+from scipy.stats import gaussian_kde
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
-DATADIR = '/net/argos/data/peps/cchlod/ARGO_DATA/TempSalintyGamma'
-
+#DATADIR = '/net/argos/data/peps/cchlod/ARGO_DATA/TempSalintyGamma'
+DATADIR = './data'
 FPREFIX = 'mapped_gamma_all_sources_'
 YEARS = {2006}
 
@@ -69,11 +72,13 @@ X = scaler.transform(Xmasked)
 pca = PCA(n_components=4)
 pca.fit(X)
 
+
 #%%plot PCA
 plt.plot(scaler.mean_,data['gamma'].depth)
 plt.gca().invert_yaxis()
 plt.ylabel('depth[m]')
 plt.xlabel('density')
+
 plt.title('mean density profile')
 plt.show()
 
@@ -101,22 +106,85 @@ plt.title('PCA component number '+ str(icomp+1))
 
 
 #%% reconstruct
-n_components = 1
-pca1 = PCA(n_components=n_components)
-pca1.fit(X)
-proj1 = pca1.transform(X)
-Xrec = pca1.inverse_transform(proj1)
-Xrec = scaler.inverse_transform(Xrec)
+XX=dict()
+components = [1,2,3,10]
 
-X2 = xr.DataArray(Xrec,Xmasked.coords).unstack('geo')
+for n_components in components:
+
+    pca1 = PCA(n_components=n_components)
+    pca1.fit(X)
+    proj1 = pca1.transform(X)
+    Xrec = pca1.inverse_transform(proj1)
+    Xrec = scaler.inverse_transform(Xrec)
+    
+    XX[n_components] = xr.DataArray(Xrec,Xmasked.coords).unstack('geo')
 
 
 
 #%% Plots
-gamma1d = data['gamma'].isel(lat=100,lon=30)
-gamma1d.plot()
+n_components = 1
+
+#North profile
+lat = -35
+lon = 0
+gamma1d = data['gamma'].isel(lat=lat,lon=lon)
+plt.plot(gamma1d,data['gamma'].depth,label='profile')
+plt.plot(XX[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec['+str(n_components)+']')
+plt.plot(scaler.mean_,data['gamma'].depth,label='mean')
+plt.gca().invert_yaxis()
+plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
+plt.legend()
 plt.show()
 
-gamma2d = data['gamma'].isel(depth=0)
-gamma2d.plot()
+#South profile
+lat = -80
+lon = 0
+gamma1d = data['gamma'].isel(lat=lat,lon=lon)
+plt.plot(gamma1d,data['gamma'].depth,label='profile')
+plt.plot(scaler.mean_,data['gamma'].depth,label='mean')
+plt.plot(XX[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,label='reconstruct')
+plt.gca().invert_yaxis()
+plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
+plt.legend()
 plt.show()
+
+#%% regress on lat
+lr = LinearRegression()
+
+#predictor for linear regression
+Xlin = Xmasked['lat'].values[:,np.newaxis]
+
+#Xlin = np.concatenate([Xmasked['lat'].values[:,np.newaxis],\
+#                       Xmasked['lon'].values[:,np.newaxis]],axis=1)
+
+
+lr.fit(Xlin,proj[:,0].squeeze())
+
+#%% plot results of regression   
+n = 20000
+I = np.random.permutation(proj.shape[0])
+I = I[:n]
+xy = np.vstack([Xmasked['lat'][I],proj[I,0].squeeze()])
+z = gaussian_kde(xy)(xy)
+
+#regression
+yl = lr.predict(Xlin)
+
+# Sort the points by density, so that the densest points are plotted last
+idx = z.argsort()
+x, y, z = Xmasked['lat'][I][idx], proj[I,0][idx], z[idx]
+#plt.plot(Xmasked['lat'],proj1,'.')
+plt.scatter(x,y,c=z,s=10,edgecolor='')
+plt.plot(Xlin[:,0],yl,'k-')
+plt.xlabel('latitude')
+plt.ylabel('PCA component number 1')
+R2 = lr.score(Xlin,proj[:,0].squeeze())
+plt.title('R2 = ' + '{:04.3f}'.format(R2))
+plt.show()
+
+#gamma2d = data['gamma'].isel(depth=0)
+#gamma2d.plot()
+#plt.show()
+
+#%% latitude component determination
