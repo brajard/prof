@@ -14,14 +14,17 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler,FunctionTransformer
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
+#from sklearn.externals import joblib
 import xarray as xr
 import numpy as np
 from scipy.stats import gaussian_kde
-
+import pickle
 import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap,cm
+from mpl_toolkits.basemap import Basemap
 #DATADIR = '/net/argos/data/peps/cchlod/ARGO_DATA/TempSalintyGamma'
 DATADIR = './data'
+OUTDIR = './output'
+SVESUFFIX = ''
 FPREFIX = 'mapped_gamma_all_sources_'
 YEARS = {2006}
 
@@ -345,4 +348,14 @@ for d,v in zip(depth,vlim):
     
 
 #%% Save preproc, pca and depth
-#pickle
+fname = os.path.join(OUTDIR,'preproc'+SVESUFFIX+'.p')
+with open(fname,'wb') as f:
+    pickle.dump(preproc,f)
+
+fname = os.path.join(OUTDIR,'pca'+SVESUFFIX+'.p')
+with open(fname,'wb') as f:
+    pickle.dump(pca2n[1],f)
+
+fname = os.path.join(OUTDIR,'depth'+SVESUFFIX+'.p')
+with open(fname,'wb') as f:
+    pickle.dump(data['gamma'].depth,f)
