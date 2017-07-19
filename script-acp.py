@@ -19,7 +19,7 @@ import numpy as np
 from scipy.stats import gaussian_kde
 
 import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap
+from mpl_toolkits.basemap import Basemap,cm
 #DATADIR = '/net/argos/data/peps/cchlod/ARGO_DATA/TempSalintyGamma'
 DATADIR = './data'
 FPREFIX = 'mapped_gamma_all_sources_'
@@ -40,17 +40,22 @@ Xmasked=Xmasked.transpose('geo','depth')
 
 
 #%% basemap plot
-def map_plot(XX):
+def map_plot(XX,vmin=None,vmax=None,cmap=None):
     #X should be a xarray containing lon and lat
     lon_0 = 0
     boundinglat = float(XX.lat.max())
     XX=XX.transpose('lat','lon')
-    m = Basemap(projection='spstere',boundinglat=boundinglat,lon_0=lon_0,resolution='l')
+    m = Basemap(projection='spstere',
+                boundinglat=boundinglat,
+                lon_0=lon_0,resolution='l')
     xx,yy = np.meshgrid(XX.lon,XX.lat)
     x,y = m(xx,yy)
-    m.contourf(x,y,XX.values)
+    cont = 13
+    if not vmin is None:
+        cont = np.linspace(vmin,vmax,cont)
+    h=m.contourf(x,y,XX.values,cont,vmin=vmin,vmax=vmax,cmap=cmap)
 
-    plt.colorbar()
+    m.colorbar(h)
  #   m.drawmapboundary(fill_color='aqua')
     m.drawcoastlines()
     m.fillcontinents(color='coral',lake_color='aqua')
@@ -104,7 +109,7 @@ proj = pca.transform(X)
 proj2 = xr.DataArray(proj[:,icomp],coords=Xmasked['geo'].coords)
 map_plot(proj2.unstack('geo').transpose('lat','lon'))
 plt.title('PCA component number '+ str(icomp+1))
-
+plt.show()
 
 #%% reconstruct
 XX = dict()
@@ -144,8 +149,10 @@ lat = 60
 lon = 600
 gamma1d = data['gamma'].isel(lat=lat,lon=lon)
 plt.plot(gamma1d,data['gamma'].depth,label='profile')
+plt.plot(XX[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec['+str(n_components)+']')
 plt.plot(scaler.mean_,data['gamma'].depth,label='mean')
-plt.plot(XX[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,label='reconstruct')
+
 plt.gca().invert_yaxis()
 plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
 plt.legend()
@@ -164,7 +171,7 @@ Xlin = Xmasked['lat'].values[:,np.newaxis]
 lr.fit(Xlin,proj[:,0].squeeze())
 
 #%% plot results of regression   
-n = 20000
+n = 10000
 I = np.random.permutation(proj.shape[0])
 I = I[:n]
 xy = np.vstack([Xmasked['lat'][I],proj[I,0].squeeze()])
@@ -225,7 +232,7 @@ plt.show()
 
 #South profile
 lat = 60
-lon = 600
+lon = 1200
 gamma1d = data['gamma'].isel(lat=lat,lon=lon)
 plt.plot(gamma1d,data['gamma'].depth,label='profile')
 plt.plot(scaler.mean_,data['gamma'].depth,label='mean')
@@ -235,3 +242,107 @@ plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
 plt.legend()
 plt.show()
 
+#%% New normalization
+X = preproc.transform(Xmasked)
+
+
+pca2 = PCA(n_components=4)
+pca2.fit(X)
+
+#%%plot PCA
+
+x = range(1,len(pca2.explained_variance_ratio_)+1)
+plt.bar(x,pca2.explained_variance_ratio_)
+plt.plot(x,pca2.explained_variance_ratio_.cumsum(),'r.-')
+plt.xticks(x)
+plt.xlabel('eigen value')
+plt.ylabel('explained variance')
+plt.show()
+
+plt.plot(pca2.components_[0,:],data['gamma'].depth)
+plt.gca().invert_yaxis()
+plt.title('First PCA component')
+plt.xlabel('component value')
+plt.ylabel('depth[m]')
+
+#%%geoplot
+icomp = 0
+proj = pca2.transform(X)
+proj2 = xr.DataArray(proj[:,icomp],coords=Xmasked['geo'].coords)
+map_plot(proj2.unstack('geo').transpose('lat','lon'))
+plt.title('PCA component number '+ str(icomp+1))
+plt.show()
+
+plt.hist(proj.ravel(),30)
+plt.xlabel('PCA component number '+ str(icomp+1))
+plt.ylabel('number of occurence')
+plt.show()
+
+#%% reconstruct
+XX2 = dict()
+pca2n = dict()
+components = [1,2,3,10]
+
+for n_components in components:
+
+    pca2n[n_components] = PCA(n_components=n_components)
+    pca2n[n_components].fit(X)
+    proj1 = pca2n[n_components].transform(X)
+    Xrec = pca2n[n_components].inverse_transform(proj1)
+    Xrec = preproc.inverse_transform(Xrec)
+    
+    XX2[n_components] = xr.DataArray(Xrec,Xmasked.coords).unstack('geo')
+
+
+
+#%% Plots
+n_components = 1
+
+#North profile
+lat = -15
+lon = 0
+gamma1d = data['gamma'].isel(lat=lat,lon=lon)
+plt.plot(gamma1d,data['gamma'].depth,label='profile')
+plt.plot(XX2[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec2['+str(n_components)+']')
+plt.plot(XXd.isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec(lat)')
+plt.plot(XX[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec['+str(n_components)+']')
+plt.gca().invert_yaxis()
+plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
+plt.legend()
+plt.show()
+
+#South profile
+lat = 60
+lon = 1200
+gamma1d = data['gamma'].isel(lat=lat,lon=lon)
+plt.plot(gamma1d,data['gamma'].depth,label='profile')
+plt.plot(XX2[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec2['+str(n_components)+']')
+plt.plot(XXd.isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec(lat)')
+plt.plot(XX[n_components].isel(lat=lat,lon=lon),data['gamma'].depth,\
+         label='rec['+str(n_components)+']')
+plt.gca().invert_yaxis()
+plt.title('lat='+str(gamma1d.lat.values)+', lon='+str(gamma1d.lon.values))
+plt.legend()
+plt.show()
+
+#%% Errors
+depth = [16,1016]
+vlim = [1.5,0.16]
+for d,v in zip(depth,vlim):
+    delta = data['gamma'].sel(depth=d) - XX[n_components].sel(depth=d)
+    map_plot(delta,vmin=-v,vmax=v,cmap='coolwarm')
+    plt.title('Error on rec at depth='+str(delta.depth.values-16)+'m')
+    plt.show()
+    delta = data['gamma'].sel(depth=d) - XX2[n_components].sel(depth=d)
+    map_plot(delta,vmin=-v,vmax=v,cmap='coolwarm')
+    plt.title('Error on rec2 at depth='+str(delta.depth.values-16)+'m')
+    plt.show()
+    
+
+#%% Save preproc, pca and depth
+#pickle
